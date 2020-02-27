@@ -130,7 +130,6 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
         ax.set_xlabel('x')
         ax.set_ylabel('z')
         ax.set_zlabel('y')
-        ax.set_aspect('equal')
         ax.set_proj_type('persp')
 
         if object_names is not None:
