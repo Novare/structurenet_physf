@@ -6,7 +6,7 @@ python ./pretrain_part_pc.py \
   --val_dataset 'val_no_other_less_than_10_parts.txt' \
   --epochs 200 \
   --model_version 'model_part_pc' \
-  --batch_size 64 \
+  --batch_size 256 \
   --lr 1e-3 \
   --lr_decay_every 300 \
   --lr_decay_by 0.9 \

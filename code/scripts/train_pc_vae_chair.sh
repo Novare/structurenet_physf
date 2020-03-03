@@ -5,7 +5,8 @@ python ./train_pc.py \
   --train_dataset 'train_no_other_less_than_10_parts.txt' \
   --val_dataset 'val_no_other_less_than_10_parts.txt' \
   --epochs 200 \
+  --batch_size 256 \
   --model_version 'model_pc' \
   --load_geo \
   --part_pc_exp_name 'part_pc_vae_chair' \
-  --part_pc_model_epoch 194
+  --part_pc_model_epoch 199
