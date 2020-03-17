@@ -201,26 +201,3 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                 
     plt.tight_layout()
     plt.show()
-
-def draw_line(ax, p1, p2, color):
-    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], c=color)
-    
-def draw_pymesh(ax, mesh, color):
-    for face in mesh.faces:
-        for i in range(len(face)):
-            i1 = 0
-            i2 = 0
-            if i == len(face) - 1:
-                i1 = face[i]
-                i2 = face[0]
-            else:
-                i1 = face[i]
-                i2 = face[i+1]
-            draw_line(ax=ax, p1=mesh.vertices[i1], p2=mesh.vertices[i2], color=color)
-                
-def fill_pymesh(ax, mesh, color):
-    tri = a3.art3d.Poly3DCollection(mesh.vertices[mesh.faces])
-    tri.set_color(color)
-    tri.set_edgecolor(color)
-    ax.add_collection3d(tri)
-                
