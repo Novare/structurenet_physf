@@ -148,3 +148,53 @@ def cut_out_intersection_volumes(meshes, cutvolumes):
         if len(cut_meshes[i].vertices) == 0:
             del cut_meshes[i]
     return cut_meshes 
+
+def calculate_measure_of_infeasibility(obj):
+    # Compute OOBBs from pointcloud
+    PRINT_INFO("========= COMPUTING OOBBS FROM POINTCLOUD =========\n")
+
+    leafitems = obj.graph(leafs_only=True)[1]
+    PRINT_INFO("Using " + str(os.cpu_count()) + " CPU core(s) for OOBB approximation.")
+    executor = concurrent.futures.ProcessPoolExecutor(os.cpu_count())
+    oobbs = list(executor.map(pointcloud_to_oobbs, [leaf[0].cpu().numpy().reshape(-1, 3) for leaf in leafitems]))
+
+    ## Add ground oobb by hand
+    max_h_distance = 0
+    lowest_y = 10000
+    for oobb in oobbs:
+        for cp in oobb:
+            lowest_y = min(lowest_y, cp[2])
+            max_h_distance = max(max(abs(cp[0]), abs(cp[1])), max_h_distance)
+    lowest_y = lowest_y + 0.05
+
+    ground_extent_h = max_h_distance * 1.25
+    ground_extent_v = 0.25
+    ground_points = np.array([
+        [-ground_extent_h, lowest_y, -ground_extent_h],
+        [ ground_extent_h, lowest_y, -ground_extent_h],
+        [ ground_extent_h, lowest_y,  ground_extent_h],
+        [-ground_extent_h, lowest_y,  ground_extent_h],
+        [-ground_extent_h, lowest_y - ground_extent_v, -ground_extent_h],
+        [ ground_extent_h, lowest_y - ground_extent_v, -ground_extent_h],
+        [ ground_extent_h, lowest_y - ground_extent_v,  ground_extent_h],
+        [-ground_extent_h, lowest_y - ground_extent_v,  ground_extent_h]]
+    )
+    oobbs.append(pointcloud_to_oobbs(ground_points))
+
+    # Compute intersection volumes from OOBBs
+    PRINT_INFO("\n========= COMPUTING INTERSECTION VOLUMES FROM OOBBS =========\n")
+    meshes, cutvolumes = oobbs_to_meshes_and_cutvolumes(oobbs)
+
+    # Cut out intersection from meshes
+    PRINT_INFO("\n========= CUTTING OUT INTERSECTIONS FROM MESHES =========\n")
+    cut_meshes = cut_out_intersection_volumes(meshes, cutvolumes)
+
+    # Compute contact surfaces from intersection volumes
+    PRINT_INFO("\n========= COMPUTING CONTACT SURFACES =========\n")
+    PRINT_INFO("Using " + str(os.cpu_count()) + " CPU core(s) for contact surface calculation.")
+    executor = concurrent.futures.ProcessPoolExecutor(os.cpu_count())
+    args = [(cut_meshes[i].vertices, cut_meshes[i].faces, cut_meshes[j].vertices, cut_meshes[j].faces) for (_, i, j) in cutvolumes]
+    contact_surfaces = list(executor.map(calculate_contact_surfaces, args))
+
+    moi = 0.0
+    return moi, oobbs, cutvolumes, contact_surfaces
