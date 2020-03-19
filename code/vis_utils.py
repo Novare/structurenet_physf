@@ -8,6 +8,8 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import mpl_toolkits.mplot3d as a3
+import pymesh as pm
 
 from rand_cmap import rand_cmap
 cmap = rand_cmap(300, type='bright', first_color_black=True, last_color_black=False, verbose=False)
@@ -130,7 +132,6 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
         ax.set_xlabel('x')
         ax.set_ylabel('z')
         ax.set_zlabel('y')
-        ax.set_aspect('equal')
         ax.set_proj_type('persp')
 
         if object_names is not None:
@@ -200,4 +201,3 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                 
     plt.tight_layout()
     plt.show()
-
