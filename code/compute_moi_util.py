@@ -54,6 +54,40 @@ def get_triangle_normal(triangle):
 
     return np.cross(d1n, d2n)
 
+# Based on https://stackoverflow.com/questions/1406029/how-to-calculate-the-volume-of-a-3d-mesh-object-the-surface-of-which-is-made-up
+def get_mesh_volume(mesh):
+    volume = 0.0
+
+    triangles = mesh.vertices[mesh.faces]
+    for triangle in triangles:
+        p1 = triangle[0]
+        p2 = triangle[1]
+        p3 = triangle[2]
+
+        v321 = p3[0] * p2[1] * p1[2]
+        v231 = p2[0] * p3[1] * p1[2]
+        v312 = p3[0] * p1[1] * p2[2]
+        v132 = p1[0] * p3[1] * p2[2]
+        v213 = p2[0] * p1[1] * p3[2]
+        v123 = p1[0] * p2[1] * p3[2]
+
+        volume += (1.0 / 6.0) * (-v321 + v231 + v312 - v132 - v213 + v123)
+
+    return np.abs(volume)
+
+def get_mesh_centroid(mesh):
+    area_sum = 0.0
+    centroid = np.array([0.0, 0.0, 0.0])
+
+    for triangle in mesh.vertices[mesh.faces]:
+        center = np.array((triangle[0] + triangle[1] + triangle[2]) / 3.0)
+        area = norm(np.cross(triangle[1] - triangle[0], triangle[2] - triangle[0])) / 2.0
+        centroid += area * center
+        area_sum += area
+
+    centroid /= area_sum
+    return centroid
+
 # Generate a random, bright color. Useful for plots that need to pop
 def random_color():
     h,s,l = random.random(), 0.5 + random.random()/2.0, 0.4 + random.random()/5.0
