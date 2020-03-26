@@ -208,52 +208,53 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
     A_fr_col_ind = np.array(A_fr_col_ind)
     A_fr = (sp.sparse.coo_matrix((A_fr_data, (A_fr_row_ind, A_fr_col_ind)), shape=(A_fr_row_count, A_fr_column_count), dtype=np.float32)).tocsc()
 
-    return A_eq, w, A_fr
+    # Build A_compr
+    A_compr_column_count = np.shape(A_eq)[1]
+    A_compr_row_count = (int) (A_compr_column_count / 2)
+
+    A_compr_data = np.repeat(1, A_compr_row_count)
+    A_compr_row_ind = np.repeat(1, A_compr_row_count)
+    A_compr_col_ind = []
+    for i in range((int) (A_compr_column_count / 4)):
+        A_compr_col_ind.append(4 * i)
+        A_compr_col_ind.append(4 * i + 1)
+    A_compr_col_ind = np.array(A_compr_col_ind) 
+    A_compr = (sp.sparse.coo_matrix((A_compr_data, (A_compr_row_ind, A_compr_col_ind)), shape=(A_compr_row_count, A_compr_column_count), dtype=np.float32)).tocsc()
+
+    return A_eq, w, A_fr, A_compr
 
 # This assumes that f is made up of vectors containing 4 scalars,
 # f_n+, f_n-, f_t1, f_t2 respectively
 def f_func(f):
     return np.sum(np.square(f[1::4]))
 
-def f_derv(f):
+def f_jac(f):
     return 2 * np.sum(f[1::4])
+
+def f_hess(f):
+    return 0
 
 def opt_callback(xk):
     PRINT_INFO("New iteration. Current f: " + str(xk))
     return False
 
-def optimize_f(A_eq, w, A_fr):
+def optimize_f(A_eq, w, A_fr, A_compr):
+    start_time = time.time()
+
     f_dim = np.shape(A_eq)[1]
     f0 = np.random.rand(f_dim)
+   
+    constr_static = sp.optimize.LinearConstraint(A_eq, -w, -w)
+    constr_fric = sp.optimize.LinearConstraint(A_fr, np.repeat(-np.inf, np.shape(A_fr)[0]), np.repeat(0, np.shape(A_fr)[0]))
+    constr_compr = sp.optimize.LinearConstraint(A_compr, np.repeat(0, np.shape(A_compr)[0]), np.repeat(np.inf, np.shape(A_compr)[0])) 
 
-    constr_static = {
-        "type": "eq",  
-        "fun": lambda f, A_eq=A_eq, w=w: np.dot(A_eq, f) + w,
-        "jac": lambda f, A_eq=A_eq, w=w: A_eq
-    } 
-
-    constr_fric = {
-        "type": "ineq",
-        "fun": lambda f, A_fr=A_fr: -np.dot(A_fr, f),
-        "jac": lambda f, A_fr=A_fr: -A_fr
-    }
-
-    constr_pos_compr = {
-        "type": "ineq",
-        "fun": lambda f: f[0::4],
-        "jac": lambda f: 0
-    }
-
-    constr_neg_compr = {
-        "type": "ineq",
-        "fun": lambda f: f[1::4],
-        "jac": lambda f: 0
-    }
-
-    constraints = [constr_static, constr_pos_compr, constr_neg_compr, constr_fric]
-    bounds = sp.optimize.Bounds(-1.0, 1.0)
-    res = sp.optimize.minimize(f_func, f0, method="SLSQP", jac=f_derv, constraints=constraints, options={"ftol": 1e-9, "disp": True}, callback=opt_callback, bounds=bounds)
+    MAX_ITER = 10 # turn this up later!
+    constraints = [constr_static, constr_compr, constr_fric]
+    res = sp.optimize.minimize(f_func, f0, method="trust-constr", jac=f_jac, hess=f_hess, constraints=constraints, options={"verbose": 3, "maxiter": MAX_ITER})
     moi = f_func(res.x)
+
+    time_diff = (time.time() - start_time) / 60.0
+    PRINT_INFO("Optimization with MAX_ITER of " + str(MAX_ITER) + " took " + time_diff + " minutes")
     return moi
 
 # Calculate the measure of infeasibility using the other functions defined
@@ -298,7 +299,7 @@ def calculate_measure_of_infeasibility(obj):
 
     # Place force vectors and solve the optimization problem to calculate the measure of infeasibility 
     PRINT_INFO("\n========= OPTIMIZING =========\n")
-    A_eq, w, A_fr = build_constraint_elements(cut_meshes, contact_surfaces)
-    moi = optimize_f(A_eq, w, A_fr)
+    A_eq, w, A_fr, A_compr = build_constraint_elements(cut_meshes, contact_surfaces)
+    moi = optimize_f(A_eq, w, A_fr, A_compr)
 
     return moi, oobbs, cut_meshes, cut_volumes, contact_surfaces
