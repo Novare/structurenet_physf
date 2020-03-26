@@ -88,6 +88,13 @@ def get_mesh_centroid(mesh):
     centroid /= area_sum
     return centroid
 
+def is_zero_edge_triangle(triangle):
+    tol = 1e-6
+    p0 = triangle[0]
+    p1 = triangle[1]
+    p2 = triangle[2]
+    return norm(p1 - p0) < tol or norm(p2 - p0) < tol or norm(p2 - p1) < tol
+            
 # Generate a random, bright color. Useful for plots that need to pop
 def random_color():
     h,s,l = random.random(), 0.5 + random.random()/2.0, 0.4 + random.random()/5.0
