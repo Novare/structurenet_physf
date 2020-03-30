@@ -13,35 +13,24 @@ import time
 import colorsys
 import concurrent.futures
 import pdb
+import logging as log
 
-SHOULD_PRINT_DEBUG = False
-SHOULD_PRINT_INFO = True
-SHOULD_PRINT_ERROR = True
 
-# Helper functions for printing. These are used so different outputs can be
-# enabled and disabled based on output type / importance
-def PRINT_DEBUG(x):
-    if SHOULD_PRINT_DEBUG:
-        print(x)
-
-def PRINT_INFO(x):
-    if SHOULD_PRINT_INFO:
-        print(x)
-
-def PRINT_ERROR(x):
-    if SHOULD_PRINT_ERROR:
-        print(x)
-
-# For some reason, NumPy does not provide its own normalize function for vectors
 def normalize(x):
     n = norm(x)
     if n > 0:
         return x / n
     else:
-        PRINT_ERROR("Called normalize() with zero! x = " + str(x) + ", n = " + str(n))
-        return None 
+        log.error("Called normalize() with zero! x = {}, n = {}".format(str(x), str(n)))
+        return None
 
-# Calculate the normal of a triangle
+
+def is_collinear(p0, p1, p2):
+    e1 = normalize(p1 - p0)
+    e2 = normalize(p2 - p0)
+    return 1.0 - np.dot(e1, e2) < 1e-6
+
+
 def get_triangle_normal(triangle):
     v0 = triangle[0]
     v1 = triangle[1]
@@ -53,6 +42,24 @@ def get_triangle_normal(triangle):
     d2n = normalize(d2)
 
     return np.cross(d1n, d2n)
+
+
+# Based on https://en.wikipedia.org/wiki/Heron%27s_formula#Numerical_stability
+def get_triangle_surface_area(triangle):
+    edges = [norm(triangle[1] - triangle[0]), norm(triangle[2] - triangle[0]), norm(triangle[2] - triangle[1])]
+    edges.sort()
+    a = edges[2]
+    b = edges[1]
+    c = edges[0]
+
+    # Sometimes the result of this dips below 0 ever so slightly, causing the whole thing to fail,
+    # so we take care of this beforehand
+    if (c - (a - b)) < 0.0:
+        return 0.0
+
+    val = (a + (b + c)) * (c - (a - b)) * (c + (a - b)) * (a + (b - c))
+    return 0.25 * np.sqrt(val)
+
 
 # Based on https://stackoverflow.com/questions/1406029/how-to-calculate-the-volume-of-a-3d-mesh-object-the-surface-of-which-is-made-up
 def get_mesh_volume(mesh):
@@ -75,6 +82,7 @@ def get_mesh_volume(mesh):
 
     return np.abs(volume)
 
+
 def get_mesh_centroid(mesh):
     area_sum = 0.0
     centroid = np.array([0.0, 0.0, 0.0])
@@ -88,28 +96,32 @@ def get_mesh_centroid(mesh):
     centroid /= area_sum
     return centroid
 
+
 def is_zero_edge_triangle(triangle):
     tol = 1e-6
     p0 = triangle[0]
     p1 = triangle[1]
     p2 = triangle[2]
     return norm(p1 - p0) < tol or norm(p2 - p0) < tol or norm(p2 - p1) < tol
-            
+
+
 # Generate a random, bright color. Useful for plots that need to pop
 def random_color():
-    h,s,l = random.random(), 0.5 + random.random()/2.0, 0.4 + random.random()/5.0
-    r,g,b = [i for i in colorsys.hls_to_rgb(h,l,s)]
+    h, s, l = random.random(), 0.5 + random.random() / 2.0, 0.4 + random.random() / 5.0
+    r, g, b = [i for i in colorsys.hls_to_rgb(h, l, s)]
     return (r, g, b)
 
-# Helper functions for drawing with matplotlib
+
 def draw_line(ax, p1, p2, color):
     ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], c=color)
-    
+
+
 def draw_pymesh(ax, mesh, color):
     tri = a3.art3d.Poly3DCollection(mesh.vertices[mesh.faces])
     tri.set_color((0.0, 0.0, 0.0, 0.0))
     tri.set_edgecolor(color)
     ax.add_collection3d(tri)
+
 
 def fill_pymesh(ax, mesh, color):
     tri = a3.art3d.Poly3DCollection(mesh.vertices[mesh.faces])
@@ -117,9 +129,11 @@ def fill_pymesh(ax, mesh, color):
     tri.set_edgecolor(color)
     ax.add_collection3d(tri)
 
+
 def draw_oobbs(ax, cps):
     for cp in cps:
         draw_oobb(ax, cp)
+
 
 def draw_oobb(ax, cp):
     boxcolor = random_color()
@@ -136,13 +150,16 @@ def draw_oobb(ax, cp):
     ax.plot([cp[2][0], cp[6][0]], [cp[2][1], cp[6][1]], [cp[2][2], cp[6][2]], c=boxcolor)
     ax.plot([cp[3][0], cp[7][0]], [cp[3][1], cp[7][1]], [cp[3][2], cp[7][2]], c=boxcolor)
 
+
 def draw_cut_volumes(ax, cut_volumes):
     for (cv, _, _) in cut_volumes:
         fill_pymesh(ax, cv, random_color())
 
+
 def draw_cut_meshes(ax, cut_meshes):
     for mesh in cut_meshes:
         draw_pymesh(ax, mesh, random_color())
+
 
 def draw_contact_surfaces(ax, contact_surfaces):
     for (i, j, triangles) in contact_surfaces:
