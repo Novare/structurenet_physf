@@ -218,7 +218,7 @@ def build_Aeq_submatrix(mesh, interface):
             Ajk[3:6, start_index + 1] = -nv
             Ajk[3:6, start_index + 2] = t1v
             Ajk[3:6, start_index + 3] = t2v
-            start_index += 3
+            start_index += 4
     return Ajk
 
 
@@ -235,7 +235,7 @@ def build_Aeq_submatrix(mesh, interface):
 def build_constraint_elements(cut_meshes, contact_surfaces):
     # Build A_eq from contact surfaces
     part_count = len(cut_meshes)
-    A_eq_rowcount = 6 * part_count
+    A_eq_rowcount = 6 * (part_count - 1)
     A_eq_columncount = 0
     submatrices = []
     for k, cs in enumerate(contact_surfaces):
@@ -258,6 +258,10 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
     for k in range(len(contact_surfaces)):
         column_offset_new = 0
         for j in range(len(cut_meshes)):
+            # Ignore ground mesh row
+            if j == part_count - 1:
+                continue
+
             fitting_submatrices = [sm for sm in submatrices if sm[0] == j and sm[1] == k]
             if len(fitting_submatrices) == 0:
                 continue
@@ -267,7 +271,7 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
 
                 for r in range(np.shape(sm[2])[0]):
                     for c in range(np.shape(sm[2])[1]):
-                        A_eq_row_ind.append(j + r)
+                        A_eq_row_ind.append(j * 6 + r)
                         A_eq_col_ind.append(column_offset + c)
                         A_eq_data.append((sm[2])[r][c])
         column_offset = column_offset_new
@@ -280,8 +284,12 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
                                  dtype=np.float32)).tocsc()
 
     # Build w from cut_meshes
-    w = np.zeros(6 * len(cut_meshes))
+    w = np.zeros(6 * (len(cut_meshes) - 1))
     for i, mesh in enumerate(cut_meshes):
+        # Exclude ground mesh
+        if i == len(cut_meshes) - 1:
+            break
+
         weight = get_mesh_volume(mesh)
         w[i * 6:i * 6 + 6] = np.array([0, 0, -weight, 0, 0, 0])
 
@@ -364,6 +372,7 @@ def calculate_hover_penalty(meshes, neighbours):
                 grounded_meshes.append(i)
 
     hover_penalty = 0.0
+    hover_meshes = []
     for i in [not_ground for not_ground in range(0, ground_index) if not not_ground in grounded_meshes]:
         # Find smallest euclidian distance between this mesh and a grounded one
         smallest_distance = np.inf
@@ -371,8 +380,9 @@ def calculate_hover_penalty(meshes, neighbours):
             d = norm(get_mesh_centroid(meshes[i]) - get_mesh_centroid(meshes[j]))
             smallest_distance = np.minimum(smallest_distance, d) 
         hover_penalty += smallest_distance
-
-    return hover_penalty
+        hover_meshes.append(meshes[i])
+    
+    return hover_penalty, hover_meshes
 
 """
     The function calculating the measure of feasibility.
@@ -437,6 +447,11 @@ def optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level":
         2: 1,
         3: 0,
     } 
+
+    np.savetxt("Aeq.csv", A_eq.todense(), delimiter=",")
+    np.savetxt("w.csv", w, delimiter=",")
+    np.savetxt("Afr.csv", A_fr.todense(), delimiter=",")
+    np.savetxt("Acompr.csv", A_compr.todense(), delimiter=",")
     
     res = sp.optimize.minimize(fun=f_func,
                                x0=f0,
@@ -474,6 +489,15 @@ def apply_options(options = {"output_level": 2, "max_iterations": 1000, "dump_mo
     elif options["output_level"] == 3:
         log.basicConfig(level=log.ERROR, stream=sys.stdout, format=logformat, datefmt=dtfmt)
 
+class MOIResult:
+    def __init__(self, moi, hover_penalty, oobbs, cut_meshes, hover_meshes, cut_volumes, contact_surfaces):
+        self.moi = moi
+        self.hover_penalty = hover_penalty
+        self.oobbs = oobbs
+        self.cut_meshes = cut_meshes
+        self.hover_meshes = hover_meshes
+        self.cut_volumes = cut_volumes
+        self.contact_surfaces = contact_surfaces
 
 """
     Calculates the measure of infeasibility from a StructureNet graph.
@@ -496,10 +520,18 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
     part_boxes, part_geos, edges, part_ids, part_sems = obj.graph(leafs_only=True)
 
     if not part_boxes is None and len(part_boxes) > 0:
+        coord_rot = np.matrix([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
         oobbs = []
         for box in part_boxes:
             center = np.array(box[0:3])
             lengths = np.array(box[3:6])
+            dir_1 = np.array(box[6:9])
+            dir_2 = np.array(box[9:])
+
+            if not np.any(dir_1) or not np.any(dir_2) or not np.any(lengths):
+#                log.warning("Graph contains bounding box with a zero vector for directions/lengths. Skipping.")
+                continue
+
             dir_1 = normalize(np.array(box[6:9]))
             dir_2 = normalize(np.array(box[9:]))
             dir_3 = np.cross(dir_1, dir_2)
@@ -534,11 +566,23 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
             # [7] = (1, 1, 1)
             oobb.append(center + d1 + d2 + d3)
 
+            for i, point in enumerate(oobb):
+                oobb[i] = np.asarray(coord_rot * np.array(point).reshape(-1, 1)).reshape(-1)
+
             oobbs.append(np.array(oobb))
         return moi_from_bounding_boxes(oobbs, options)
-    else:
+    elif not part_geos is None and len(part_geos) > 0:
         cloud = [leaf[0].cpu().numpy().reshape(-1, 3) for leaf in part_geos]
         return moi_from_pointcloud(cloud, options)
+    else:
+#        log.warning("Passed empty graph into moi_from_graph. Returning 0.0.")
+        return MOIResult(moi=0.0,
+                         hover_penalty=0.0,
+                         oobbs=[],
+                         cut_meshes=[],
+                         hover_meshes=[],
+                         cut_volumes=[],
+                         contact_surfaces=[])
 
 
 """
@@ -559,6 +603,16 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
 
 def moi_from_pointcloud(pointcloud, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
     apply_options(options)
+
+    if len(pointcloud) == 0:
+#        log.warning("Passed empty pointcloud list into moi_from_pointcloud. Returning 0.0.")
+        return MOIResult(moi=0.0,
+                         hover_penalty=0.0,
+                         oobbs=[],
+                         cut_meshes=[],
+                         hover_meshes=[],
+                         cut_volumes=[],
+                         contact_surfaces=[])
 
     log.info("COMPUTING OOBBS FROM POINTCLOUD")
     log.info("Using {} CPU core(s) for OOBB approximation.".format(str(os.cpu_count())))
@@ -594,6 +648,16 @@ def moi_from_pointcloud(pointcloud, options = {"output_level": 2, "max_iteration
 
 def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
     apply_options(options)
+    
+    if len(oobbs) == 0:
+#        log.warning("Passed empty bounding box list into moi_from_bounding_boxes. Returning 0.0.")
+        return MOIResult(moi=0.0,
+                         hover_penalty=0.0,
+                         oobbs=[],
+                         cut_meshes=[],
+                         hover_meshes=[],
+                         cut_volumes=[],
+                         contact_surfaces=[])
 
     ## Add ground OOBB by hand
     max_h_distance = 0
@@ -635,7 +699,13 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
     # Place force vectors and solve the optimization problem to calculate the measure of infeasibility
     log.info("OPTIMIZING")
     A_eq, w, A_fr, A_compr = build_constraint_elements(cut_meshes, contact_surfaces)
-    hover_penalty = calculate_hover_penalty(cut_meshes, neighbours)
+    hover_penalty, hover_meshes = calculate_hover_penalty(cut_meshes, neighbours)
     moi = optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options)
 
-    return moi, hover_penalty, oobbs, cut_meshes, cut_volumes, contact_surfaces
+    return MOIResult(moi=moi,
+                     hover_penalty=hover_penalty,
+                     oobbs=oobbs,
+                     cut_meshes=cut_meshes,
+                     hover_meshes=hover_meshes,
+                     cut_volumes=cut_volumes,
+                     contact_surfaces=contact_surfaces)

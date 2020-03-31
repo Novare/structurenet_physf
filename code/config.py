@@ -67,7 +67,7 @@ def add_train_vae_args(parser):
     parser.add_argument('--loss_weight_exists', type=float, default=1.0, help='weight for the "node exists" reconstruction loss')
     parser.add_argument('--loss_weight_semantic', type=float, default=0.1, help='weight for the semantic reconstruction loss')
     parser.add_argument('--loss_weight_edge_exists', type=float, default=1.0, help='weight for the "edge exists" loss')
-
+    parser.add_argument('--loss_weight_moi', type=float, default=1.0, help='weight for the measure of infeasibility loss')
     # logging
     parser.add_argument('--log_path', type=str, default='../data/logs')
     parser.add_argument('--no_tb_log', action='store_true', default=False)

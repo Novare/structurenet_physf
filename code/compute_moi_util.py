@@ -9,12 +9,12 @@ import pymesh
 import numpy as np
 import random
 import os
+import sys
 import time
 import colorsys
 import concurrent.futures
 import pdb
 import logging as log
-
 
 def normalize(x):
     n = norm(x)
