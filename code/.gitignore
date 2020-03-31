@@ -1,2 +1,4 @@
 .ipynb_checkpoints
 __pycache__
+debug_output/
+*.csv

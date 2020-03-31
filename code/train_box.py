@@ -16,6 +16,9 @@ import torch.utils.data
 from config import add_train_vae_args
 from data import PartNetDataset, Tree
 import utils
+import pdb
+
+from compute_moi import moi_from_graph
 
 # Use 1-4 CPU threads to train.
 # Don't use too many CPU threads, which will slow down the training.
@@ -95,7 +98,7 @@ def train(conf):
 
     # create logs
     if not conf.no_console_log:
-        header = '     Time    Epoch     Dataset    Iteration    Progress(%)       LR       BoxLoss   StructLoss   EdgeExists  KLDivLoss   SymLoss    AdjLoss  AnchorLoss  TotalLoss'
+        header = '     Time    Epoch     Dataset    Iteration    Progress(%)       LR       BoxLoss   StructLoss   EdgeExists  KLDivLoss   SymLoss    AdjLoss  AnchorLoss  MoILoss TotalLoss'
     if not conf.no_tb_log:
         # https://github.com/lanpa/tensorboard-pytorch
         from tensorboardX import SummaryWriter
@@ -214,7 +217,7 @@ def forward(batch, data_features, encoder, decoder, device, conf,
             is_valdt=False, step=None, epoch=None, batch_ind=0, num_batch=1, start_time=0,
             log_console=False, log_tb=False, tb_writer=None, lr=None, flog=None):
     objects = batch[data_features.index('object')]
-
+    
     losses = {
         'box': torch.zeros(1, device=device),
         'anchor': torch.zeros(1, device=device),
@@ -224,7 +227,8 @@ def forward(batch, data_features, encoder, decoder, device, conf,
         'edge_exists': torch.zeros(1, device=device),
         'kldiv': torch.zeros(1, device=device),
         'sym': torch.zeros(1, device=device),
-        'adj': torch.zeros(1, device=device)}
+        'adj': torch.zeros(1, device=device),
+        'moi': torch.zeros(1, device=device)}
 
     # process every data in the batch individually
     for obj in objects:
@@ -243,6 +247,12 @@ def forward(batch, data_features, encoder, decoder, device, conf,
         obj_losses = decoder.structure_recon_loss(z=root_code, gt_tree=obj)
         for loss_name, loss in obj_losses.items():
             losses[loss_name] = losses[loss_name] + loss
+            
+        # calculate measure of infeasibility of decoded object
+        with torch.no_grad():
+            graph_dec = decoder.decode_structure(z=root_code, max_depth=conf.max_tree_depth)
+        moi = torch.tensor(moi_from_graph(graph_dec).moi)
+        losses['moi'] = losses['moi'] + moi
 
     for loss_name in losses.keys():
         losses[loss_name] = losses[loss_name] / len(objects)
@@ -256,6 +266,7 @@ def forward(batch, data_features, encoder, decoder, device, conf,
     losses['kldiv'] *= conf.loss_weight_kldiv
     losses['sym'] *= conf.loss_weight_sym
     losses['adj'] *= conf.loss_weight_adj
+    losses['moi'] *= conf.loss_weight_moi
 
     total_loss = 0
     for loss in losses.values():
@@ -278,6 +289,7 @@ def forward(batch, data_features, encoder, decoder, device, conf,
                 f'''{losses['sym'].item():>10.2f} '''
                 f'''{losses['adj'].item():>10.2f} '''
                 f'''{losses['anchor'].item():>10.2f} '''
+                f'''{losses['moi'].item():>10.2f} '''
                 f'''{total_loss.item():>10.2f}''')
             flog.write(
                 f'''{strftime("%H:%M:%S", time.gmtime(time.time()-start_time)):>9s} '''
@@ -293,6 +305,7 @@ def forward(batch, data_features, encoder, decoder, device, conf,
                 f'''{losses['sym'].item():>10.2f} '''
                 f'''{losses['adj'].item():>10.2f} '''
                 f'''{losses['anchor'].item():>10.2f} '''
+                f'''{losses['moi'].item():>10.2f} '''
                 f'''{total_loss.item():>10.2f}\n''')
             flog.flush()
 
@@ -309,6 +322,7 @@ def forward(batch, data_features, encoder, decoder, device, conf,
             tb_writer.add_scalar('kldiv_loss', losses['kldiv'].item(), step)
             tb_writer.add_scalar('sym_loss', losses['sym'].item(), step)
             tb_writer.add_scalar('adj_loss', losses['adj'].item(), step)
+            tb_writer.add_scalar('moi_loss', losses['moi'].item(), step)
 
     return total_loss
 
