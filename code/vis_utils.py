@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d as a3
 import pymesh as pm
+from datetime import datetime
 
 from rand_cmap import rand_cmap
 cmap = rand_cmap(300, type='bright', first_color_black=True, last_color_black=False, verbose=False)
@@ -107,7 +108,8 @@ def draw_edge(ax, e, p_from, p_to, rot=None):
         linewidth=edge_type_linewidth[e['type']])
 
 def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', \
-        leafs_only=False, use_id_as_color=False, visu_edges=True, sem_colors_filename=None):
+        leafs_only=False, use_id_as_color=False, visu_edges=True, sem_colors_filename=None,
+        save_fig=False, save_fig_file=""):
     # load sem colors if provided
     if sem_colors_filename is not None:
         sem_colors = load_semantic_colors(filename=sem_colors_filename)
@@ -200,4 +202,7 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                         rot=coord_rot)
                 
     plt.tight_layout()
+    
+    if save_fig:
+        plt.savefig(save_fig_file, dpi=300)
     plt.show()

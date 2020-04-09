@@ -26,7 +26,7 @@ import logging as log
 """
 
 
-def pointcloud_to_oobbs(pointcloud):
+def _pointcloud_to_oobbs(pointcloud):
     pcl = np.transpose(np.float64(np.array(pointcloud)))
     oobb = ap.approximateMVBB(pts=pcl,
                               epsilon=0.001,
@@ -65,7 +65,7 @@ def pointcloud_to_oobbs(pointcloud):
 """
 
 
-def cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
+def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
     meshes = []
     for cps in oobbs:
         # Vertices are in order:
@@ -148,10 +148,7 @@ def cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations":
                augmented_size_selected_triangles = [t for t in triangles if get_triangle_surface_area(t) > new_tol]
             triangles = augmented_size_selected_triangles
 
-        if len(triangles) > 0:
-            contact_triangles.append((i, j, triangles))
-        else:
-            lost_interfaces += 1
+        contact_triangles.append((i, j, triangles))
 
     if options["dump_models"]:
         for cs in contact_triangles:
@@ -186,40 +183,75 @@ def cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations":
 """
     Build the A_eq submatrix used in one of the optimization constraints.
     
-    mesh -- One of the two meshes the interface belongs to. 
-    interface -- An interface between two meshes.
+    part1 -- First of the two parts the interface belongs to. 
+    part2 -- Second of the two parts the interface belongs to. 
+    interface -- An interface between two parts.
 """
 
 
-def build_Aeq_submatrix(mesh, interface):
-    c = get_mesh_centroid(mesh)
+def _build_Aeq_submatrix_pair(part1, part2, interface):
+    c1 = get_mesh_centroid(part1)
+    c2 = get_mesh_centroid(part2)
     vertex_count = 3 * len(interface)
-    Ajk = np.zeros((6, 4 * vertex_count))
+    Aj1k = np.zeros((6, 4 * vertex_count))
+    Aj2k = np.zeros((6, 4 * vertex_count))
 
     # log.debug("Adding interface to A_eq. Interface has {} triangles.".format(str(len(interface))))
 
     start_index = 0
     for t, triangle in enumerate(interface):
-        n = get_triangle_normal(triangle)
-        t1 = normalize(triangle[1] - triangle[0])
-        t2 = np.cross(n, t1)
+        # Choose linear force basis for part 1
+        p1nc = get_triangle_normal(triangle)
 
+        # If p1nc points towards p2, it is not compressive, i.e. we turn it around
+        if (np.dot(p1nc, normalize(c2 - c1)) > 0):
+            p1nc = -p1nc
+
+        p1nt = -p1nc 
+        p1t1 = normalize(triangle[1] - triangle[0])
+        p1t2 = normalize(np.cross(p1nc, p1t1))
+
+        # Choose linear force basis for part 2 based on part 1
+        p2nc = -p1nc 
+        p2nt = -p1nt 
+        p2t1 = -p1t1
+        p2t2 = -p1t2
+
+        # Torque bases are computed based on vertex
         for vt, vertex in enumerate(triangle):
-            v = normalize(c - vertex)
-            nv = np.cross(n, v)
-            t1v = np.cross(t1, v)
-            t2v = np.cross(t2, v)
+            p1v = normalize(c1 - vertex)
+            p2v = normalize(c2 - vertex)
 
-            Ajk[0:3, start_index + 0] = n
-            Ajk[0:3, start_index + 1] = -n
-            Ajk[0:3, start_index + 2] = t1
-            Ajk[0:3, start_index + 3] = t2
-            Ajk[3:6, start_index + 0] = nv
-            Ajk[3:6, start_index + 1] = -nv
-            Ajk[3:6, start_index + 2] = t1v
-            Ajk[3:6, start_index + 3] = t2v
+            p1tnc = normalize(np.cross(p1nc, p1v))
+            p1tnt = normalize(np.cross(p1nt, p1v))
+            p1tt1 = normalize(np.cross(p1t1, p1v))
+            p1tt2 = normalize(np.cross(p1t2, p1v))
+
+            p2tnc = normalize(np.cross(p2nc, p2v))
+            p2tnt = normalize(np.cross(p2nt, p2v))
+            p2tt1 = normalize(np.cross(p2t1, p2v))
+            p2tt2 = normalize(np.cross(p2t2, p2v))
+
+            Aj1k[0:3, start_index + 0] = p1nc
+            Aj1k[0:3, start_index + 1] = p1nt 
+            Aj1k[0:3, start_index + 2] = p1t1
+            Aj1k[0:3, start_index + 3] = p1t2
+            Aj1k[3:6, start_index + 0] = p1tnc
+            Aj1k[3:6, start_index + 1] = p1tnt 
+            Aj1k[3:6, start_index + 2] = p1tt1
+            Aj1k[3:6, start_index + 3] = p1tt2
+
+            Aj2k[0:3, start_index + 0] = p2nc
+            Aj2k[0:3, start_index + 1] = p2nt 
+            Aj2k[0:3, start_index + 2] = p2t1
+            Aj2k[0:3, start_index + 3] = p2t2
+            Aj2k[3:6, start_index + 0] = p2tnc
+            Aj2k[3:6, start_index + 1] = p2tnt 
+            Aj2k[3:6, start_index + 2] = p2tt1
+            Aj2k[3:6, start_index + 3] = p2tt2
+
             start_index += 4
-    return Ajk
+    return Aj1k, Aj2k
 
 
 """
@@ -227,12 +259,10 @@ def build_Aeq_submatrix(mesh, interface):
 
     cut_meshes -- The meshes that make up the structure.
     contact_surfaces -- The contact surfaces between meshes.
-
-    TODO: What about the ground mesh? Remove it? Leave it?
 """
 
 
-def build_constraint_elements(cut_meshes, contact_surfaces):
+def _build_constraint_elements(cut_meshes, contact_surfaces):
     # Build A_eq from contact surfaces
     part_count = len(cut_meshes)
     A_eq_rowcount = 6 * (part_count - 1)
@@ -244,8 +274,7 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
         surface_count = len(cs[2])
 
         # Every contact surface results in two submatrices, one per part
-        smi = build_Aeq_submatrix(cut_meshes[si], cs[2])
-        smj = build_Aeq_submatrix(cut_meshes[sj], cs[2])
+        smi, smj = _build_Aeq_submatrix_pair(cut_meshes[si], cut_meshes[sj], cs[2])
 
         submatrices.append((si, k, smi))
         submatrices.append((sj, k, smj))
@@ -305,8 +334,8 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
         r = i * 2
         c = i * 4
 
-        # [-alpha 1 0]
-        # [-alpha 0 1]
+        # [-alpha alpha 1 0]
+        # [-alpha alpha 0 1]
 
         A_fr_row_ind.append(r)
         A_fr_col_ind.append(c)
@@ -318,10 +347,18 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
 
         A_fr_row_ind.append(r)
         A_fr_col_ind.append(c + 1)
+        A_fr_data.append(alpha)
+
+        A_fr_row_ind.append(r + 1)
+        A_fr_col_ind.append(c + 1)
+        A_fr_data.append(alpha)
+
+        A_fr_row_ind.append(r)
+        A_fr_col_ind.append(c + 2)
         A_fr_data.append(1)
 
         A_fr_row_ind.append(r + 1)
-        A_fr_col_ind.append(c + 2)
+        A_fr_col_ind.append(c + 3)
         A_fr_data.append(1)
 
     A_fr_data = np.array(A_fr_data)
@@ -357,7 +394,7 @@ def build_constraint_elements(cut_meshes, contact_surfaces):
     neighbours - All neighbour-relationships between individual meshes.
 """
 
-def calculate_hover_penalty(meshes, neighbours):
+def _calculate_hover_penalty(meshes, neighbours):
     ground_index = len(meshes) - 1 # We assume the ground is the last mesh
 
     grounded_meshes = [ground_index]
@@ -380,7 +417,7 @@ def calculate_hover_penalty(meshes, neighbours):
             d = norm(get_mesh_centroid(meshes[i]) - get_mesh_centroid(meshes[j]))
             smallest_distance = np.minimum(smallest_distance, d) 
         hover_penalty += smallest_distance
-        hover_meshes.append(meshes[i])
+        hover_meshes.append(i)
     
     return hover_penalty, hover_meshes
 
@@ -393,7 +430,7 @@ def calculate_hover_penalty(meshes, neighbours):
 """
 
 
-def f_func(f):
+def _f_func(f):
     return np.sum(np.square(f[1::4]))
 
 
@@ -418,7 +455,7 @@ def f_func(f):
 """
 
 
-def optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
+def _optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
     start_time = time.time()
 
     # The matrices should not contain any NaN entries!
@@ -453,12 +490,12 @@ def optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level":
     np.savetxt("Afr.csv", A_fr.todense(), delimiter=",")
     np.savetxt("Acompr.csv", A_compr.todense(), delimiter=",")
     
-    res = sp.optimize.minimize(fun=f_func,
+    res = sp.optimize.minimize(fun=_f_func,
                                x0=f0,
                                method="trust-constr",
                                constraints=constraints,
                                options={"verbose": vbs[options["output_level"]], "maxiter": options["max_iterations"]})
-    moi = f_func(res.x) + hover_penalty
+    moi = _f_func(res.x) + hover_penalty
 
     time_diff = (time.time() - start_time) / 60.0
     log.info("Optimization took {} minutes.".format(str(time_diff)))
@@ -476,7 +513,7 @@ def optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level":
                                         Useful for tweaking surface_area_tolerance. The histogram will only be shown when the
                                         output_level is 0 (debug)! [default: False]
 """
-def apply_options(options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
+def _apply_options(options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
     logformat = "%(asctime)s - %(levelname)-8s - %(message)s"
     dtfmt = "%H:%M:%S"
 
@@ -515,14 +552,17 @@ class MOIResult:
 
 
 def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
-    apply_options(options)
+    _apply_options(options)
 
     part_boxes, part_geos, edges, part_ids, part_sems = obj.graph(leafs_only=True)
 
-    if not part_boxes is None and len(part_boxes) > 0:
+    if not all(p is None for p in part_boxes) and len(part_boxes) > 0:
         coord_rot = np.matrix([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
         oobbs = []
         for box in part_boxes:
+            if box is None:
+                continue
+            
             center = np.array(box[0:3])
             lengths = np.array(box[3:6])
             dir_1 = np.array(box[6:9])
@@ -534,7 +574,7 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
 
             dir_1 = normalize(np.array(box[6:9]))
             dir_2 = normalize(np.array(box[9:]))
-            dir_3 = np.cross(dir_1, dir_2)
+            dir_3 = normalize(np.cross(dir_1, dir_2))
 
             d1 = 0.5 * lengths[0] * dir_1
             d2 = 0.5 * lengths[1] * dir_2
@@ -602,7 +642,7 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
 
 
 def moi_from_pointcloud(pointcloud, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
-    apply_options(options)
+    _apply_options(options)
 
     if len(pointcloud) == 0:
 #        log.warning("Passed empty pointcloud list into moi_from_pointcloud. Returning 0.0.")
@@ -618,7 +658,7 @@ def moi_from_pointcloud(pointcloud, options = {"output_level": 2, "max_iteration
     log.info("Using {} CPU core(s) for OOBB approximation.".format(str(os.cpu_count())))
 
     executor = concurrent.futures.ProcessPoolExecutor(os.cpu_count())
-    oobbs = list(executor.map(pointcloud_to_oobbs, pointcloud))
+    oobbs = list(executor.map(_pointcloud_to_oobbs, pointcloud))
     return moi_from_bounding_boxes(oobbs, options)
 
 
@@ -647,7 +687,7 @@ def moi_from_pointcloud(pointcloud, options = {"output_level": 2, "max_iteration
 
 
 def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations": 1000, "dump_models": False, "surface_area_tolerance": 1e-3, "print_surface_area_histogram": False}):
-    apply_options(options)
+    _apply_options(options)
     
     if len(oobbs) == 0:
 #        log.warning("Passed empty bounding box list into moi_from_bounding_boxes. Returning 0.0.")
@@ -678,11 +718,11 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
                               [ground_extent_h, lowest_y - ground_extent_v, -ground_extent_h],
                               [ground_extent_h, lowest_y - ground_extent_v, ground_extent_h],
                               [-ground_extent_h, lowest_y - ground_extent_v, ground_extent_h]])
-    oobbs.append(pointcloud_to_oobbs(ground_points))
+    oobbs.append(_pointcloud_to_oobbs(ground_points))
 
     # Compute meshes from OOBBs and iteratively cut out any intersections to find contact surfaces
     log.info("CUTTING OUT INTERSECTIONS, COLLECTING CONTACT SURFACES")
-    cut_meshes, cut_volumes, neighbours, contact_surfaces = cut_out_intersections(oobbs, options)
+    cut_meshes, cut_volumes, neighbours, contact_surfaces = _cut_out_intersections(oobbs, options)
 
     if options["output_level"] == 0:
         cscount = 0
@@ -696,11 +736,31 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
         plt.hist(x=np.array(sareas), bins=64)
         plt.show()
 
+    log.info("CALCULATING HOVER PENALTY, REMOVING HOVERING MESHES")
+    hover_penalty, hover_meshes = _calculate_hover_penalty(cut_meshes, neighbours)
+
+    # Ignore all hovering meshes from further MoI calculations
+    contact_surfaces_hoverless = []
+    for (surf_i, surf_j, triangle) in contact_surfaces:
+        if (not surf_i in hover_meshes) and (not surf_j in hover_meshes):
+            contact_surfaces_hoverless.append((surf_i, surf_j, triangle))
+    
+    meshes_hoverless = [mesh for i, mesh in enumerate(cut_meshes) if not i in hover_meshes] 
+
+    for index in sorted(hover_meshes, reverse=True):
+        for j, cs in enumerate(contact_surfaces_hoverless):
+            cs_l = list(cs)
+            if cs_l[0] >= index:
+                cs_l[0] -= 1
+            if cs_l[1] >= index:
+                cs_l[1] -= 1
+            contact_surfaces_hoverless[j] = tuple(cs_l)
+
+
     # Place force vectors and solve the optimization problem to calculate the measure of infeasibility
     log.info("OPTIMIZING")
-    A_eq, w, A_fr, A_compr = build_constraint_elements(cut_meshes, contact_surfaces)
-    hover_penalty, hover_meshes = calculate_hover_penalty(cut_meshes, neighbours)
-    moi = optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options)
+    A_eq, w, A_fr, A_compr = _build_constraint_elements(meshes_hoverless, contact_surfaces_hoverless)
+    moi = _optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options)
 
     return MOIResult(moi=moi,
                      hover_penalty=hover_penalty,
