@@ -740,23 +740,21 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
     hover_penalty, hover_meshes = _calculate_hover_penalty(cut_meshes, neighbours)
 
     # Ignore all hovering meshes from further MoI calculations
-    meshes_hoverless = []
     contact_surfaces_hoverless = []
     for (surf_i, surf_j, triangle) in contact_surfaces:
         if (not surf_i in hover_meshes) and (not surf_j in hover_meshes):
             contact_surfaces_hoverless.append((surf_i, surf_j, triangle))
+    
+    meshes_hoverless = [mesh for i, mesh in enumerate(cut_meshes) if not i in hover_meshes] 
 
-    for i, mesh in enumerate(cut_meshes):
-        if not i in hover_meshes:
-            meshes_hoverless.append(mesh)
-        else:
-            for j, cs in enumerate(contact_surfaces_hoverless):
-                cs_l = list(cs)
-                if cs_l[0] >= i:
-                    cs_l[0] -= 1
-                if cs_l[1] >= i:
-                    cs_l[1] -= 1
-                contact_surfaces_hoverless[j] = tuple(cs_l)
+    for index in sorted(hover_meshes, reverse=True):
+        for j, cs in enumerate(contact_surfaces_hoverless):
+            cs_l = list(cs)
+            if cs_l[0] >= index:
+                cs_l[0] -= 1
+            if cs_l[1] >= index:
+                cs_l[1] -= 1
+            contact_surfaces_hoverless[j] = tuple(cs_l)
 
 
     # Place force vectors and solve the optimization problem to calculate the measure of infeasibility

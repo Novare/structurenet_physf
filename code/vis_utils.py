@@ -108,7 +108,8 @@ def draw_edge(ax, e, p_from, p_to, rot=None):
         linewidth=edge_type_linewidth[e['type']])
 
 def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', \
-        leafs_only=False, use_id_as_color=False, visu_edges=True, sem_colors_filename=None):
+        leafs_only=False, use_id_as_color=False, visu_edges=True, sem_colors_filename=None,
+        save_fig=False, save_fig_file=""):
     # load sem colors if provided
     if sem_colors_filename is not None:
         sem_colors = load_semantic_colors(filename=sem_colors_filename)
@@ -201,5 +202,7 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                         rot=coord_rot)
                 
     plt.tight_layout()
-    plt.savefig("plots/" + datetime.now().strftime("%d-%b-%Y--%H-%M-%S") + ".png", dpi=300)
+    
+    if save_fig:
+        plt.savefig(save_fig_file, dpi=300)
     plt.show()
