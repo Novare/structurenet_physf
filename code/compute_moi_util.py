@@ -41,7 +41,7 @@ def get_triangle_normal(triangle):
     d1n = normalize(d1)
     d2n = normalize(d2)
 
-    return np.cross(d1n, d2n)
+    return normalize(np.cross(d1n, d2n))
 
 
 # Based on https://en.wikipedia.org/wiki/Heron%27s_formula#Numerical_stability

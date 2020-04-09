@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import mpl_toolkits.mplot3d as a3
 import pymesh as pm
+from datetime import datetime
 
 from rand_cmap import rand_cmap
 cmap = rand_cmap(300, type='bright', first_color_black=True, last_color_black=False, verbose=False)
@@ -200,4 +201,5 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                         rot=coord_rot)
                 
     plt.tight_layout()
+    plt.savefig("plots/" + datetime.now().strftime("%d-%b-%Y--%H-%M-%S") + ".png", dpi=300)
     plt.show()
