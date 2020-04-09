@@ -1,4 +1,4 @@
-python ./train_pc.py \
+python3 ./train_pc.py \
   --exp_name 'pc_ae_chair' \
   --category 'Chair' \
   --data_path '../data/partnetdata/chair_hier' \

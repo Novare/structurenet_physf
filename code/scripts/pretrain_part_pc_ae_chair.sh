@@ -1,4 +1,4 @@
-python ./pretrain_part_pc.py \
+python3 ./pretrain_part_pc.py \
   --exp_name 'part_pc_ae_chair' \
   --category 'Chair' \
   --data_path '../data/partnetdata/chair_geo' \

@@ -1,4 +1,4 @@
-python ./train_box.py \
+python3 ./train_box.py \
   --exp_name 'box_ae_chair' \
   --category 'Chair' \
   --data_path '../data/partnetdata/chair_hier' \

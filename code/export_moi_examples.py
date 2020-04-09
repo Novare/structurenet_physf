@@ -24,7 +24,6 @@ root_dir = '../data/results/box_vae_chair'
 obj_list = sorted([item for item in os.listdir(root_dir) if item.endswith('.json')])
 
 for obj_id in range(100):
-    # pdb.set_trace()
     obj = PartNetDataset.load_object(os.path.join(root_dir, obj_list[obj_id]))
     res = moi_from_graph(obj, options)    
 
