@@ -104,6 +104,13 @@ def is_zero_edge_triangle(triangle):
     p2 = triangle[2]
     return norm(p1 - p0) < tol or norm(p2 - p0) < tol or norm(p2 - p1) < tol
 
+def clean_up_mesh(mesh, tol):
+    new_mesh, _ = pymesh.remove_isolated_vertices(mesh)
+    new_mesh, _ = pymesh.remove_duplicated_vertices(new_mesh)
+    new_mesh, _ = pymesh.remove_duplicated_faces(new_mesh)
+    new_mesh, _ = pymesh.remove_degenerated_triangles(new_mesh)
+    new_mesh, _ = pymesh.collapse_short_edges(new_mesh, rel_threshold=0.1)
+    return new_mesh
 
 # Generate a random, bright color. Useful for plots that need to pop
 def random_color():

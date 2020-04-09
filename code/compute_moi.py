@@ -105,7 +105,21 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
     cut_volumes = []
     neighbours = []
 
+    meshes_uncut = meshes.copy() 
+
     for (i, j) in unique_pairs:
+#        print("Processing pair {}...".format(str((i, j))))
+        mi_tcount = len(meshes[i].vertices[meshes[i].faces])
+        if (mi_tcount > 256):
+#            log.info("Cut mesh has too many triangles, removing minor triangles...")
+            meshes[i] = clean_up_mesh(meshes[i], options["surface_area_tolerance"])
+            new_mi_tcount = len(meshes[i].vertices[meshes[i].faces])
+#            log.info("Reduced triangle count from {} to {}!".format(str(mi_tcount), str(new_mi_tcount)))
+
+        # If the original meshes don't intersect, don't even bother with the more complicated, cut down meshes
+        if len(pymesh.boolean(meshes_uncut[i], meshes_uncut[j], operation="intersection", engine="igl").vertices) == 0:
+            continue
+
         cvol = pymesh.boolean(meshes[i], meshes[j], operation="intersection", engine="igl")
         if len(cvol.vertices) == 0:
             continue
@@ -559,9 +573,13 @@ def moi_from_graph(obj, options = {"output_level": 2, "max_iterations": 1000, "d
     if not all(p is None for p in part_boxes) and len(part_boxes) > 0:
         coord_rot = np.matrix([[1, 0, 0], [0, 0, -1], [0, 1, 0]])
         oobbs = []
-        for box in part_boxes:
-            if box is None:
+        for bx in part_boxes:
+            if bx is None:
                 continue
+
+            box = bx
+            if len(bx) == 1:
+                box = bx[0]
             
             center = np.array(box[0:3])
             lengths = np.array(box[3:6])
@@ -732,8 +750,9 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
             for triangle in cs[2]:
                 sareas.append(get_triangle_surface_area(triangle))
         log.debug("Optimization has to consider {} contact surfaces!".format(str(cscount)))
-        log.debug("Printing distribution of contact surface areas:")
-        plt.hist(x=np.array(sareas), bins=64)
+        # Sometimes this crashes for some reason, but it's not essential so it's commented out for now
+        # log.debug("Printing distribution of contact surface areas:")
+        # plt.hist(x=np.array(sareas), bins=64)
         plt.show()
 
     log.info("CALCULATING HOVER PENALTY, REMOVING HOVERING MESHES")
