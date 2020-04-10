@@ -109,7 +109,7 @@ def clean_up_mesh(mesh, tol):
     new_mesh, _ = pymesh.remove_duplicated_vertices(new_mesh)
     new_mesh, _ = pymesh.remove_duplicated_faces(new_mesh)
     new_mesh, _ = pymesh.remove_degenerated_triangles(new_mesh)
-    new_mesh, _ = pymesh.collapse_short_edges(new_mesh, rel_threshold=0.1)
+    new_mesh, _ = pymesh.collapse_short_edges(new_mesh, rel_threshold=0.2)
     return new_mesh
 
 # Generate a random, bright color. Useful for plots that need to pop

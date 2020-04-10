@@ -47,6 +47,7 @@ def add_train_vae_args(parser):
     # training parameters
     parser.add_argument('--epochs', type=int, default=200)
     parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--moi_subset_perc', type=float, default=0.33)
     parser.add_argument('--lr', type=float, default=.001)
     parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--lr_decay_by', type=float, default=0.9)

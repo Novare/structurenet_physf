@@ -18,6 +18,7 @@ import torch.utils.data
 from config import add_train_vae_args
 from data import PartNetDataset, Tree
 import utils
+import random
 
 from compute_moi import moi_from_graph
 
@@ -255,8 +256,13 @@ def forward(batch, data_features, encoder, decoder, device, conf,
         'hov': torch.zeros(1, device=device)
     }
 
+    # The Measure of Infeasibility loss function takes a lot of time
+    # to compute so we only calculate it over a subset of the batch
+    rnd_sample_count = int(len(objects) * conf.moi_subset_perc)
+    rnd_subset = random.sample(range(len(objects)), rnd_sample_count)
+
     # process every data in the batch individually
-    for obj in objects:
+    for obj_ind, obj in enumerate(objects):
         obj.to(device)
 
         # encode object to get root code
@@ -274,16 +280,21 @@ def forward(batch, data_features, encoder, decoder, device, conf,
             losses[loss_name] = losses[loss_name] + loss
             
         # calculate measure if infeasibility of decoded object
-        with torch.no_grad():
-            graph_dec = decoder.decode_structure(z=root_code, max_depth=conf.max_tree_depth)
-        moi_res = moi_from_graph(graph_dec) 
-        moi = torch.tensor(moi_res.moi - moi_res.hover_penalty)
-        hov = torch.tensor(moi_res.hover_penalty)
-        losses['moi'] = losses['moi'] + moi
-        losses['hov'] = losses['hov'] + moi
+        # if it's in the subset of objects that we want to use
+        if obj_ind in rnd_subset:
+            with torch.no_grad():
+                graph_dec = decoder.decode_structure(z=root_code, max_depth=conf.max_tree_depth)
+            moi_res = moi_from_graph(graph_dec) 
+            moi = torch.tensor(moi_res.moi - moi_res.hover_penalty)
+            hov = torch.tensor(moi_res.hover_penalty)
+            losses['moi'] = losses['moi'] + moi
+            losses['hov'] = losses['hov'] + moi
 
     for loss_name in losses.keys():
-        losses[loss_name] = losses[loss_name] / len(objects)
+        if loss_name in ['moi', 'hov']:
+            losses[loss_name] = losses[loss_name] / rnd_sample_count
+        else:
+            losses[loss_name] = losses[loss_name] / len(objects)
 
     losses['latent'] *= conf.loss_weight_latent
     losses['geo'] *= conf.loss_weight_geo

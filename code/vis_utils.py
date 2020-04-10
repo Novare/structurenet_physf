@@ -132,8 +132,8 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
         ax.set_ylim(extent, -extent)
         ax.set_zlim(-extent, extent)
         ax.set_xlabel('x')
-        ax.set_ylabel('z')
-        ax.set_zlabel('y')
+        ax.set_ylabel('y')
+        ax.set_zlabel('z')
         ax.set_proj_type('persp')
 
         if object_names is not None:
@@ -201,7 +201,7 @@ def draw_partnet_objects(objects, object_names=None, figsize=None, rep='boxes', 
                         p_to=p_to.cpu().numpy().reshape(-1),
                         rot=coord_rot)
                 
-    plt.tight_layout()
+    # plt.tight_layout()
     
     if save_fig:
         plt.savefig(save_fig_file, dpi=300)
