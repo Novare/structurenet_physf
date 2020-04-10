@@ -111,10 +111,10 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
 #        print("Processing pair {}...".format(str((i, j))))
         mi_tcount = len(meshes[i].vertices[meshes[i].faces])
         if (mi_tcount > 256):
-#            log.info("Cut mesh has too many triangles, removing minor triangles...")
+            log.info("Cut mesh has too many triangles, removing minor triangles...")
             meshes[i] = clean_up_mesh(meshes[i], options["surface_area_tolerance"])
             new_mi_tcount = len(meshes[i].vertices[meshes[i].faces])
-#            log.info("Reduced triangle count from {} to {}!".format(str(mi_tcount), str(new_mi_tcount)))
+            log.info("Reduced triangle count from {} to {}!".format(str(mi_tcount), str(new_mi_tcount)))
 
         # If the original meshes don't intersect, don't even bother with the more complicated, cut down meshes
         if len(pymesh.boolean(meshes_uncut[i], meshes_uncut[j], operation="intersection", engine="igl").vertices) == 0:
