@@ -111,7 +111,7 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
 #        print("Processing pair {}...".format(str((i, j))))
         mi_tcount = len(meshes[i].vertices[meshes[i].faces])
         if (mi_tcount > 256):
-            log.info("Cut mesh has too many triangles, removing minor triangles...")
+            log.info("Cut mesh has too many triangles, cleaning up...")
             meshes[i] = clean_up_mesh(meshes[i], options["surface_area_tolerance"])
             new_mi_tcount = len(meshes[i].vertices[meshes[i].faces])
             log.info("Reduced triangle count from {} to {}!".format(str(mi_tcount), str(new_mi_tcount)))
@@ -127,15 +127,42 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
         neighbours.append((i, j))
 
         # Cut the intersection out of one of the meshes
-        meshes[i] = pymesh.boolean(meshes[i], cvol, operation="difference", engine="igl")
+        cut_mesh_index = i
+        cut_mesh_i = pymesh.boolean(meshes[i], cvol, operation="difference", engine="igl")
 
-        sources = meshes[i].get_attribute("source")
+        # If mesh i is within mesh j, cutting out their intersection will remove
+        # mesh i completely. Try cutting out the intersection from j instead.
+        if len(cut_mesh_i.vertices) > 0 and len(cut_mesh_i.faces) > 0:
+            meshes[i] = cut_mesh_i
+        else:
+            cut_mesh_j = pymesh.boolean(meshes[j], cvol, operation="difference", engine="igl")
+            
+            # If the intersection would also remove mesh j (highly unlikely),
+            # then mesh i and j must be exactly the same.
+            # This doesn't have any impact on the feasibility of the structure,
+            # so we ignore it.
+            if len(cut_mesh_j.vertices) == 0 or len(cut_mesh_j.faces) == 0:
+                continue
+
+            cut_mesh_index = j
+            meshes[j] = cut_mesh_j
+
+        sources = []
+        try:
+            sources = meshes[cut_mesh_index].get_attribute("source")
+        except RuntimeError:
+            # The source attribute doesn't exist sometimes.
+            # This usually happens if meshes[i] does not have any vertices,
+            # i.e. taking the difference with the cut removes the mesh entirely.
+            # We handle this edge case above ^
+            pdb.set_trace()
+
         triangles = []
-        for k, face in enumerate(meshes[i].faces):
+        for k, face in enumerate(meshes[cut_mesh_index].faces):
             # Only add contact triangles
             if not sources[k] == 0:
                 continue
-            triangle = meshes[i].vertices[face]
+            triangle = meshes[cut_mesh_index].vertices[face]
 
             # Don't add triangles with a zero edge
             if is_zero_edge_triangle(triangle):
@@ -146,6 +173,11 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
                 continue
 
             triangles.append(triangle)
+
+        # This should never happen, but if it does this prevents
+        # the following while loop from running forever.
+        if len(triangles) == 0:
+            continue
 
         tol = options["surface_area_tolerance"]
         size_selected_triangles = [t for t in triangles if get_triangle_surface_area(t) > tol]
@@ -413,7 +445,11 @@ def _calculate_hover_penalty(meshes, neighbours):
 
     grounded_meshes = [ground_index]
     last_len = 0 
-    while not len(grounded_meshes) == last_len:
+
+    cur_iter = 0
+    max_iter = 1000
+    while not len(grounded_meshes) == last_len and cur_iter < max_iter:
+        cur_iter = cur_iter + 1
         last_len = len(grounded_meshes)
 
         for (i, j) in neighbours:
