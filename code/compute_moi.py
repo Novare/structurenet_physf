@@ -185,14 +185,14 @@ def _cut_out_intersections(oobbs, options = {"output_level": 2, "max_iterations"
             triangles = size_selected_triangles
         else:
             # The size tolerance is so low that no triangle of the interface survived.
-            # Since we should at least have one triangle per interface, we try to find
+            # Since we should at least have one triangle per interface, we use 
             # a size limit that allows the biggest few triangles to get in.
-            new_tol = tol
-            augmented_size_selected_triangles = []
-            while len(augmented_size_selected_triangles) == 0:
-               new_tol *= 0.9
-               augmented_size_selected_triangles = [t for t in triangles if get_triangle_surface_area(t) > new_tol]
-            triangles = augmented_size_selected_triangles
+            new_tol = max([get_triangle_surface_area(t) for t in triangles]) * 0.75
+            triangles = [t for t in triangles if get_triangle_surface_area(t) > new_tol]
+
+        # This should never happen, but is here as a fail-safe
+        if len(triangles) == 0:
+            continue
 
         contact_triangles.append((i, j, triangles))
 
