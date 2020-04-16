@@ -472,13 +472,25 @@ def _calculate_hover_penalty(meshes, neighbours):
     return hover_penalty, hover_meshes
 
 """
-    The function calculating the measure of feasibility.
+    The function calculating the measure of feasibility and its
+    respective jacobian and hessian matrices.
     This assumes that f is made up of vectors containing 4 scalars:
     f_n+, f_n-, f_t1, f_t2 respectively
 
     f -- The vector containing all forces across the structure.
 """
 
+def _f_hess(f):
+    fs = np.size(f)
+    H = np.zeros((fs, fs))
+    H[range(fs)[1::4], range(fs)[1::4]] = 2
+    return H
+
+def _f_jac(f):
+    f[0::4] = 0 
+    f[2::4] = 0 
+    f[3::4] = 0 
+    return f * 2.0
 
 def _f_func(f):
     return np.sum(np.square(f[1::4]))
@@ -514,7 +526,14 @@ def _optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level"
     assert(not np.isnan(np.sum(A_compr)))
 
     f_dim = np.shape(A_eq)[1]
-    f0 = np.random.rand(f_dim) * 2.0 - np.repeat(1, f_dim)
+    f0 = np.zeros(f_dim)
+    for i in range(int(f_dim / 4)):
+        fcom = np.random.rand()
+        tanmax = fcom * 0.7
+
+        f0[i * 4 + 0] = fcom 
+        f0[i * 4 + 2] = np.random.rand() * tanmax 
+        f0[i * 4 + 3] = np.random.rand() * tanmax 
 
     constr_static = sp.optimize.LinearConstraint(A_eq, -w, -w)
 
@@ -542,6 +561,8 @@ def _optimize_f(A_eq, w, A_fr, A_compr, hover_penalty, options = {"output_level"
     
     res = sp.optimize.minimize(fun=_f_func,
                                x0=f0,
+                               jac=_f_jac,
+                               hess=_f_hess,
                                method="trust-constr",
                                constraints=constraints,
                                options={"verbose": vbs[options["output_level"]], "maxiter": options["max_iterations"]})
