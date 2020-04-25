@@ -810,7 +810,8 @@ def moi_from_bounding_boxes(oobbs, options = {"output_level": 2, "max_iterations
         # Sometimes this crashes for some reason, but it's not essential so it's commented out for now
         # log.debug("Printing distribution of contact surface areas:")
         # plt.hist(x=np.array(sareas), bins=64)
-        plt.show()
+        # plt.savefig("chairs_with_moi/histogram.png", dpi=300)
+        # plt.show()
 
     log.info("CALCULATING HOVER PENALTY, REMOVING HOVERING MESHES")
     hover_penalty, hover_meshes = _calculate_hover_penalty(cut_meshes, neighbours)
