@@ -180,13 +180,13 @@ def train(conf):
                 lr=encoder_opt.param_groups[0]['lr'], flog=flog)
 
             # optimize one step
-            encoder_scheduler.step()
-            decoder_scheduler.step()
             encoder_opt.zero_grad()
             decoder_opt.zero_grad()
             total_loss.backward()
             encoder_opt.step()
             decoder_opt.step()
+            encoder_scheduler.step()
+            decoder_scheduler.step()
 
             # save checkpoint
             with torch.no_grad():
@@ -232,6 +232,9 @@ def train(conf):
     utils.save_checkpoint(
         models=models, model_names=model_names, dirname=os.path.join(conf.model_path, conf.exp_name),
         epoch=epoch, prepend_epoch=False, optimizers=optimizers, optimizer_names=optimizer_names)
+    utils.save_checkpoint(
+        models=models, model_names=model_names, dirname=os.path.join(conf.model_path, conf.exp_name),
+        epoch=epoch, prepend_epoch=True, optimizers=optimizers, optimizer_names=optimizer_names)
     print("DONE")
     flog.write("DONE\n")
 
