@@ -1,3 +1,6 @@
+# This is a fork!
+This fork extends the original work by [Kaichun Mo](https://github.com/daerduoCarey/structurenet) to additionally optimize for physical feasibility. The paper outlining the changes is called "Extending StructureNet to Generate Physically Feasible Shapes", published at the GRAPP 2021 conference.
+
 # StructureNet: Hierarchical Graph Networks for 3D Shape Generation
 
 ![Overview](https://github.com/daerduoCarey/structurenet/blob/master/images/teaser.png)
